@@ -73,6 +73,264 @@ object(Closure)#1 (1) {
 </code></pre>
 
 
+> parameter里面是函数的参数列表，如果没有参数，那greet就是object(Closure)#1 (0) { }
 
+##3, 应用场景
 
+> 借鉴这篇文章的介绍：http://docs.phalconphp.com/en/latest/reference/di.html ：依赖注入(DI)或控制反转(loC) 。依赖注入和控制反转是同一个东西，是一种设计模式，这种模式用来减少程序间的耦合。下面从PHP的角度来描述一下这个概念。
 
+<pre><code>
+class SomeComponent
+{
+
+    /**
+     * 连接的实例是硬编码在组件内，因此很难从外面更换或改变其行为
+     */
+    public function someDbTask()
+    {
+        $connection = new Connection(array(
+            "host" => "localhost",
+            "username" => "root",
+            "password" => "secret",
+            "dbname" => "invo"
+        ));
+
+        // ...
+    }
+
+}
+
+$some = new SomeComponent();
+$some->someDbTask();
+</code></pre>
+
+*假设我们要开发一个名为SomeComponent的一个组件，组件的执行任务不重要了，总之我们组件要依赖一个数据库的连接。在第一个例子里，因为数据库的连接参数和类型不能改变，所以这种方式有点不切实际，如果我们有Component2,Component3...这种方式的代码的问题在于，如果我们哪一天改变了某些组件的数据库，要修改的太多了，即使把这些参数放到全局变量也不能解决部分改变的问题。还有一个问题就是代码重复太严重。*
+
+>为了解决这个问题，我们在使用组件之前在外部创建一个实例来实现外部依赖注入。现在看来这是一个不错的解决方案：
+
+<pre><code>
+class SomeComponent
+{
+
+    protected $_connection;
+
+    /**
+     * 从外部注入连接
+     */
+    public function setConnection($connection)
+    {
+        $this->_connection = $connection;
+    }
+
+    public function someDbTask()
+    {
+        $connection = $this->_connection;
+
+        // ...
+    }
+
+}
+
+$some = new SomeComponent();
+
+//创建连接
+$connection = new Connection(array(
+    "host" => "localhost",
+    "username" => "root",
+    "password" => "secret",
+    "dbname" => "invo"
+));
+
+//向组件内注入连接
+$some->setConnection($connection);
+
+$some->someDbTask();
+</code></pre>
+
+>现在想象一下如果我们要在一个应用的不同地方使用这个组件，那么我们就需要多次的创建连接。我们可以使用一个叫做注册类的方法来保持住这个连接实例而不用多次的创建连接。
+
+<pre><code>
+class Registry
+{
+
+    /**
+     * Returns the connection
+     */
+    public static function getConnection()
+    {
+       return new Connection(array(
+            "host" => "localhost",
+            "username" => "root",
+            "password" => "secret",
+            "dbname" => "invo"
+        ));
+    }
+
+}
+
+class SomeComponent
+{
+
+    protected $_connection;
+
+    /**
+     * Sets the connection externally
+     */
+    public function setConnection($connection)
+    {
+        $this->_connection = $connection;
+    }
+
+    public function someDbTask()
+    {
+        $connection = $this->_connection;
+
+        // ...
+    }
+
+}
+
+$some = new SomeComponent();
+
+//Pass the connection defined in the registry
+$some->setConnection(Registry::getConnection());
+
+$some->someDbTask();
+</code></pre>
+
+*上面方式还是不太完美，如果一个组件内有两次连接数据库的需求，那需要连接两次数据库服务器*
+
+<pre><code>
+class Registry
+{
+
+    protected static $_connection;
+
+    /**
+     * Creates a connection
+     */
+    protected static function _createConnection()
+    {
+        return new Connection(array(
+            "host" => "localhost",
+            "username" => "root",
+            "password" => "secret",
+            "dbname" => "invo"
+        ));
+    }
+
+    /**
+     * Creates a connection only once and returns it
+     */
+    public static function getSharedConnection()
+    {
+        if (self::$_connection===null){
+            $connection = self::_createConnection();
+            self::$_connection = $connection;
+        }
+        return self::$_connection;
+    }
+
+    /**
+     * Always returns a new connection
+     */
+    public static function getNewConnection()
+    {
+        return self::_createConnection();
+    }
+
+}
+
+class SomeComponent
+{
+
+    protected $_connection;
+
+    /**
+     * Sets the connection externally
+     */
+    public function setConnection($connection)
+    {
+        $this->_connection = $connection;
+    }
+
+    /**
+     * This method always needs the shared connection
+     */
+    public function someDbTask()
+    {
+        $connection = $this->_connection;
+
+        // ...
+    }
+
+    /**
+     * This method always needs a new connection
+     */
+    public function someOtherDbTask($connection)
+    {
+
+    }
+
+}
+
+$some = new SomeComponent();
+
+//This injects the shared connection
+$some->setConnection(Registry::getSharedConnection());
+
+$some->someDbTask();
+
+//Here, we always pass a new connection as parameter
+$some->someOtherDbTask(Registry::getNewConnection());
+</code></pre>
+
+*从上面我们看到依赖注入怎么解决了这种问题，将依赖作为参数传递代替在组件内部创建的这种方式可以使我们的应用变的更加容易维护和解耦。但从长远看，这种依赖注入还是有些缺点*
+
+*举个例子，如果一个组件内有多个依赖，我们需要创建多个参数依赖传入组件内，使我们的代码变的不容易维护和解耦合*
+
+<pre><code>
+//Create the dependencies or retrieve them from the registry
+$connection = new Connection();
+$session = new Session();
+$fileSystem = new FileSystem();
+$filter = new Filter();
+$selector = new Selector();
+
+//Pass them as constructor parameters
+$some = new SomeComponent($connection, $session, $fileSystem, $filter, $selector);
+
+// ... or using setters
+
+$some->setConnection($connection);
+$some->setSession($session);
+$some->setFileSystem($fileSystem);
+$some->setFilter($filter);
+$some->setSelector($selector);
+</code></pre>
+
+*想到我们必须要在应用程序的许多地方创建对象。在未来，如果我人不再需要这些依赖，那么就要遍历整个代码来删除这些参数。为了解决这个问题，我们再去弄一个工厂方法：*
+
+<pre><code>
+class SomeComponent
+{
+
+    // ...
+
+    /**
+     * Define a factory method to create SomeComponent instances injecting its dependencies
+     */
+    public static function factory()
+    {
+
+        $connection = new Connection();
+        $session = new Session();
+        $fileSystem = new FileSystem();
+        $filter = new Filter();
+        $selector = new Selector();
+
+        return new self($connection, $session, $fileSystem, $filter, $selector);
+    }
+
+}
+</code></pre>
