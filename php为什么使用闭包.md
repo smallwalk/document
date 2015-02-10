@@ -309,7 +309,7 @@ $some->setFilter($filter);
 $some->setSelector($selector);
 </code></pre>
 
-*想到我们必须要在应用程序的许多地方创建对象。在未来，如果我人不再需要这些依赖，那么就要遍历整个代码来删除这些参数。为了解决这个问题，我们再去弄一个工厂方法：*
+*想到我们必须要在应用程序的许多地方创建对象。在未来，如果我人不再需要这些依赖，那么就要遍历整个代码来删除这些参数。为了解决这个问题，我们再去弄一个注册类的方式来解决：*
 
 <pre><code>
 class SomeComponent
@@ -334,3 +334,75 @@ class SomeComponent
 
 }
 </code></pre>
+
+>现在我们就像回到了开头，我们在组件内又创建了依赖
+
+>解决这个问题的一个实用和优雅的方式就是新建一个依赖的容器。容器就像是我们之前看到过的全局注册类。使用相关的容器作为一个桥梁可以减少我们组件的复杂性。
+
+<pre><code>
+class SomeComponent
+{
+
+    protected $_di;
+
+    public function __construct($di)
+    {
+        $this->_di = $di;
+    }
+
+    public function someDbTask()
+    {
+
+        // Get the connection service
+        // Always returns a new connection
+        $connection = $this->_di->get('db');
+
+    }
+
+    public function someOtherDbTask()
+    {
+
+        // Get a shared connection service,
+        // this will return the same connection everytime
+        $connection = $this->_di->getShared('db');
+
+        //This method also requires an input filtering service
+        $filter = $this->_di->get('filter');
+
+    }
+
+}
+
+$di = new Phalcon\DI();
+
+//Register a "db" service in the container
+$di->set('db', function() {
+    return new Connection(array(
+        "host" => "localhost",
+        "username" => "root",
+        "password" => "secret",
+        "dbname" => "invo"
+    ));
+});
+
+//Register a "filter" service in the container
+$di->set('filter', function() {
+    return new Filter();
+});
+
+//Register a "session" service in the container
+$di->set('session', function() {
+    return new Session();
+});
+
+//Pass the service container as unique parameter
+$some = new SomeComponent($di);
+
+$some->someDbTask();
+</code></pre>
+
+
+>组件现在可以在需要服务的时候申请服务，在不需要的时候可以不用初始化服务，这样可以节省资源。组件现在是高度解耦的，例如，现在我们可以更新连接的创建方式,行为或其它的方面都不会影响组件。
+
+
+>那闭包函数主要应用在这？
