@@ -11,10 +11,11 @@ work_host_array=(
 	[lab5]="172.16.2.15" 
 	[lab6]="172.16.10.162" 
 	[dev]="10.6.4.118"
+	[cc]="172.16.0.91"
 )
 
 rd_host_array=(
-	["newlab"]="172.16.0.78"
+	[newlab]="172.16.0.78"
 )
 
 work_host=${work_host_array[$1]}
